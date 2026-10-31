@@ -1,38 +1,106 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+
 import os
-import shutil
+import math
+from contextlib import asynccontextmanager
+from pathlib import Path
+from uuid import uuid4
+
+import pandas as pd
+from dotenv import load_dotenv
+
+from fastapi import (
+    FastAPI,
+    Depends,
+    HTTPException,
+    status,
+    UploadFile,
+    File
+)
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from database import engine, Base, SessionLocal
 import models
 
-from schemas import UserCreate, UserUpdate, UserResponse, LoginRequest
+from schemas import (
+    UserCreate,
+    UserUpdate,
+    UserResponse,
+    LoginRequest
+)
+
 from security import (
     hash_password,
     verify_password,
     create_access_token,
     decode_access_token
 )
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import pandas as pd
-from pathlib import Path
-from fastapi.middleware.cors import CORSMiddleware
 
-Base.metadata.create_all(bind=engine)
+from app.insight_engine import generate_evidence
+from app.ai_explaner import explain_findings
 
-app = FastAPI()
+
+# --------------------------------------------------
+# CONFIGURATION
+# --------------------------------------------------
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BACKEND_DIR.parent
+UPLOAD_DIR = BACKEND_DIR / "uploads"
+
+load_dotenv(BACKEND_DIR / ".env")
+
+MAX_UPLOAD_SIZE_MB = int(
+    os.getenv("MAX_UPLOAD_SIZE_MB", "25")
+)
+
+MAX_UPLOAD_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if origin.strip()
+]
+
+
+# --------------------------------------------------
+# APPLICATION STARTUP
+# --------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Creates missing tables but does not modify
+    # existing PostgreSQL table structures.
+    Base.metadata.create_all(bind=engine)
+
+    yield
+
+
+app = FastAPI(
+    title="AI Business Intelligence Platform",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
-@app.get("/")
-def home():
-    return {"message": "FastAPI is working"}
+
+# --------------------------------------------------
+# DATABASE DEPENDENCY
+# --------------------------------------------------
 
 def get_db():
     db = SessionLocal()
@@ -43,86 +111,287 @@ def get_db():
         db.close()
 
 
+# --------------------------------------------------
+# COMMON DATASET FUNCTIONS
+# --------------------------------------------------
+
+def get_dataset_or_404(dataset_id: int, db: Session):
+    dataset = (
+        db.query(models.Dataset)
+        .filter(models.Dataset.id == dataset_id)
+        .first()
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found"
+        )
+
+    return dataset
+
+
+def get_dataset_path(dataset):
+    stored_path = Path(
+        str(dataset.file_path or "").replace("\\", "/")
+    )
+
+    if stored_path.is_absolute():
+        return stored_path
+
+    file_path = (BACKEND_DIR / stored_path).resolve()
+
+    # Prevent relative paths from escaping the backend folder.
+    try:
+        file_path.relative_to(BACKEND_DIR.resolve())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid dataset file path"
+        )
+
+    return file_path
+
+
+def read_dataset(dataset):
+    file_path = get_dataset_path(dataset)
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset file not found on the server"
+        )
+
+    try:
+        return pd.read_csv(file_path)
+
+    except pd.errors.EmptyDataError:
+        raise HTTPException(
+            status_code=400,
+            detail="The CSV file is empty"
+        )
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read the dataset as a valid CSV file"
+        )
+
+
+def safe_number(value):
+    number = float(value)
+
+    if math.isfinite(number):
+        return number
+
+    return None
+
+
+def convert_to_legacy_insights(findings):
+    """
+    Retains the response structure previously used by
+    /datasets/{dataset_id}/insights.
+    """
+
+    insights = []
+
+    for finding in findings:
+        evidence = finding.get("evidence", {})
+
+        item = {
+            "type": finding["category"],
+            "severity": finding["severity"],
+            "title": finding["title"],
+            "description": finding["claim"],
+            "recommendation": finding["recommendation"]
+        }
+
+        if finding["id"] == "missing_values":
+            item["columns"] = list(
+                evidence.get("affected_columns", {}).keys()
+            )
+
+        elif finding["category"] == "numeric_analysis":
+            item.update({
+                "column": evidence.get("column"),
+                "mean": evidence.get("mean"),
+                "minimum": evidence.get("minimum"),
+                "maximum": evidence.get("maximum")
+            })
+
+        elif finding["category"] == "outlier_detection":
+            item.update({
+                "column": evidence.get("column"),
+                "outlier_count": evidence.get("outlier_count")
+            })
+
+        insights.append(item)
+
+    return insights
+
+
+# --------------------------------------------------
+# HOME
+# --------------------------------------------------
+
+@app.get("/")
+def home():
+    return {
+        "message": "AI Business Intelligence Platform API is running"
+    }
+
+
+# --------------------------------------------------
+# USER MANAGEMENT
+# --------------------------------------------------
+
 @app.post("/users", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    hashed_password = hash_password(user.password)
+def create_user(
+    user: UserCreate,
+    db: Session = Depends(get_db)
+):
+    existing_user = (
+        db.query(models.User)
+        .filter(models.User.email == user.email)
+        .first()
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail="Email is already registered"
+        )
 
     new_user = models.User(
         name=user.name,
         email=user.email,
-        hashed_password=hashed_password
+        hashed_password=hash_password(user.password)
     )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
 
-    return new_user
+        return new_user
 
-@app.get("/users",response_model=list[UserResponse])
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail="Email is already registered"
+        )
+
+
+@app.get("/users", response_model=list[UserResponse])
 def get_users(db: Session = Depends(get_db)):
-    users = db.query(models.User).all()
-    return users
+    return db.query(models.User).all()
 
-@app.get("/users/{user_id}",response_model=UserResponse)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+
+@app.get("/users/{user_id}", response_model=UserResponse)
+def get_user(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(models.User)
+        .filter(models.User.id == user_id)
+        .first()
+    )
 
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
 
     return user
 
-@app.put("/users/{user_id}",response_model=UserResponse)
+
+@app.put("/users/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
     user: UserUpdate,
     db: Session = Depends(get_db)
 ):
-    existing_user = db.query(models.User).filter(
-        models.User.id == user_id
-    ).first()
+    existing_user = (
+        db.query(models.User)
+        .filter(models.User.id == user_id)
+        .first()
+    )
 
     if existing_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
 
     existing_user.name = user.name
     existing_user.email = user.email
 
-    db.commit()
-    db.refresh(existing_user)
+    try:
+        db.commit()
+        db.refresh(existing_user)
 
-    return existing_user
+        return existing_user
+
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=409,
+            detail="Email is already registered"
+        )
+
 
 @app.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(
-        models.User.id == user_id
-    ).first()
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+    user = (
+        db.query(models.User)
+        .filter(models.User.id == user_id)
+        .first()
+    )
 
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
 
     db.delete(user)
     db.commit()
 
-    return {"message": "User deleted successfully"}
+    return {
+        "message": "User deleted successfully"
+    }
 
 
-# Login endpoint
+# --------------------------------------------------
+# AUTHENTICATION
+# --------------------------------------------------
+
 @app.post("/login")
-def login(user: LoginRequest, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(
-        models.User.email == user.email
-    ).first()
+def login(
+    user: LoginRequest,
+    db: Session = Depends(get_db)
+):
+    db_user = (
+        db.query(models.User)
+        .filter(models.User.email == user.email)
+        .first()
+    )
 
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
+    if (
+        db_user is None
+        or not verify_password(
+            user.password,
+            db_user.hashed_password
         )
-
-    if not verify_password(user.password, db_user.hashed_password):
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -138,17 +407,24 @@ def login(user: LoginRequest, db: Session = Depends(get_db)):
     }
 
 
-security_scheme = HTTPBearer()
+security_scheme = HTTPBearer(auto_error=False)
 
-# Get the current authenticated user
+
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        security_scheme
+    ),
     db: Session = Depends(get_db)
 ):
-    token = credentials.credentials
-    payload = decode_access_token(token)
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
 
-    if payload is None:
+    payload = decode_access_token(credentials.credentials)
+
+    if not payload:
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired token"
@@ -156,23 +432,19 @@ def get_current_user(
 
     user_id = payload.get("sub")
 
-    if user_id is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        )
-
     try:
         user_id = int(user_id)
     except (ValueError, TypeError):
         raise HTTPException(
             status_code=401,
-            detail="Invalid token"
+            detail="Invalid authentication token"
         )
 
-    current_user = db.query(models.User).filter(
-        models.User.id == user_id
-    ).first()
+    current_user = (
+        db.query(models.User)
+        .filter(models.User.id == user_id)
+        .first()
+    )
 
     if current_user is None:
         raise HTTPException(
@@ -183,16 +455,16 @@ def get_current_user(
     return current_user
 
 
-# Protected route
-@app.get("/me")
+@app.get("/me", response_model=UserResponse)
 def get_my_profile(
     current_user: models.User = Depends(get_current_user)
 ):
-    return {
-        "id": current_user.id,
-        "name": current_user.name,
-        "email": current_user.email
-    }
+    return current_user
+
+
+# --------------------------------------------------
+# DASHBOARD
+# --------------------------------------------------
 
 @app.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
@@ -204,368 +476,366 @@ def dashboard(db: Session = Depends(get_db)):
         "total_datasets": total_datasets
     }
 
+
+# --------------------------------------------------
+# DATASET UPLOAD
+# --------------------------------------------------
+
 @app.post("/datasets/upload")
-def upload_dataset(
+async def upload_dataset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    if not file.filename.endswith(".csv"):
-        return {"error": "Only CSV files are allowed"}
+    original_filename = (
+        file.filename or ""
+    ).replace("\\", "/")
 
-    upload_folder = "uploads"
-    os.makedirs(upload_folder, exist_ok=True)
+    original_filename = Path(original_filename).name.strip()
 
-    file_path = os.path.join(upload_folder, file.filename)
+    if not original_filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename"
+        )
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    if Path(original_filename).suffix.lower() != ".csv":
+        raise HTTPException(
+            status_code=400,
+            detail="Only CSV files are allowed"
+        )
 
-    dataset = models.Dataset(
-        filename=file.filename,
-        file_path=file_path
-    )
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-    db.add(dataset)
-    db.commit()
-    db.refresh(dataset)
+    # A unique internal filename prevents accidental overwriting.
+    file_path = UPLOAD_DIR / f"{uuid4().hex}.csv"
 
-    return {
-        "message": "Dataset uploaded successfully",
-        "dataset_id": dataset.id,
-        "filename": dataset.filename
-    }
+    total_size = 0
+    chunk_size = 1024 * 1024
+
+    try:
+        with file_path.open("wb") as destination:
+            while True:
+                chunk = await file.read(chunk_size)
+
+                if not chunk:
+                    break
+
+                total_size += len(chunk)
+
+                if total_size > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"File exceeds the {MAX_UPLOAD_SIZE_MB} MB "
+                            "upload limit"
+                        )
+                    )
+
+                destination.write(chunk)
+
+        if total_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty"
+            )
+
+        # Validate CSV format before registering the dataset.
+        try:
+            pd.read_csv(file_path, nrows=5)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is not a valid CSV"
+            )
+
+        dataset = models.Dataset(
+            filename=original_filename,
+            file_path=Path(
+                "uploads",
+                file_path.name
+            ).as_posix()
+        )
+
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+
+        return {
+            "message": "Dataset uploaded successfully",
+            "dataset_id": dataset.id,
+            "filename": dataset.filename
+        }
+
+    except HTTPException:
+        db.rollback()
+        file_path.unlink(missing_ok=True)
+        raise
+
+    except Exception:
+        db.rollback()
+        file_path.unlink(missing_ok=True)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save the uploaded dataset"
+        )
+
+    finally:
+        await file.close()
+
+
+# --------------------------------------------------
+# LIST DATASETS
+# --------------------------------------------------
 
 @app.get("/datasets")
 def get_datasets(db: Session = Depends(get_db)):
-    datasets = db.query(models.Dataset).all()
+    return (
+        db.query(models.Dataset)
+        .order_by(models.Dataset.uploaded_at.desc())
+        .all()
+    )
 
-    return datasets
 
+# --------------------------------------------------
+# DATASET PREVIEW
+# --------------------------------------------------
 
 @app.get("/datasets/{dataset_id}/preview")
-def preview_dataset(dataset_id: int, db: Session = Depends(get_db)):
-    # Find the dataset in the database
-    dataset = db.query(models.Dataset).filter(
-        models.Dataset.id == dataset_id
-    ).first()
+def preview_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db)
+):
+    dataset = get_dataset_or_404(dataset_id, db)
+    df = read_dataset(dataset)
 
-    if not dataset:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset not found"
-        )
+    preview_df = df.head(10).astype(object)
 
-    # Locate the uploaded CSV file
-    file_path = Path(dataset.file_path)
+    preview_df = preview_df.where(
+        pd.notna(preview_df),
+        None
+    )
 
-    if not file_path.is_absolute():
-        file_path = Path(__file__).resolve().parent.parent / file_path
-
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="CSV file not found on the server"
-        )
-
-    try:
-        # Read the CSV file
-        df = pd.read_csv(file_path)
-
-        # Replace missing values with None for JSON
-        preview_data = df.head(10).astype(object).where(
-            pd.notna(df.head(10)), None
-        )
-
-        return {
-            "dataset_id": dataset.id,
-            "filename": dataset.filename,
-            "total_rows": len(df),
-            "total_columns": len(df.columns),
-            "columns": df.columns.tolist(),
-            "preview": preview_data.to_dict(orient="records")
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Could not read CSV file: {str(e)}"
-        )
+    return {
+        "dataset_id": dataset.id,
+        "filename": dataset.filename,
+        "total_rows": int(len(df)),
+        "total_columns": int(len(df.columns)),
+        "columns": [str(column) for column in df.columns],
+        "preview": preview_df.to_dict(orient="records")
+    }
 
 
+# --------------------------------------------------
+# DATASET ANALYSIS
+# --------------------------------------------------
 
 @app.get("/datasets/{dataset_id}/analysis")
-def analyze_dataset(dataset_id: int, db: Session = Depends(get_db)):
-    dataset = db.query(models.Dataset).filter(
-        models.Dataset.id == dataset_id
-    ).first()
+def analyze_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db)
+):
+    dataset = get_dataset_or_404(dataset_id, db)
+    df = read_dataset(dataset)
 
-    if not dataset:
+    missing_values = {
+        str(column): int(count)
+        for column, count in df.isnull().sum().items()
+    }
+
+    column_types = {
+        str(column): str(dtype)
+        for column, dtype in df.dtypes.items()
+    }
+
+    numeric_columns = df.select_dtypes(
+        include="number"
+    ).columns
+
+    numeric_summary = {}
+
+    for column in numeric_columns:
+        values = df[column].dropna()
+
+        numeric_summary[str(column)] = {
+            "mean": (
+                None if values.empty
+                else safe_number(values.mean())
+            ),
+            "minimum": (
+                None if values.empty
+                else safe_number(values.min())
+            ),
+            "maximum": (
+                None if values.empty
+                else safe_number(values.max())
+            )
+        }
+
+    return {
+        "dataset_id": dataset.id,
+        "filename": dataset.filename,
+        "total_rows": int(len(df)),
+        "total_columns": int(len(df.columns)),
+        "duplicate_rows": int(df.duplicated().sum()),
+        "missing_values": missing_values,
+        "column_types": column_types,
+        "numeric_summary": numeric_summary
+    }
+
+
+# --------------------------------------------------
+# DATASET EXPORT
+# --------------------------------------------------
+
+@app.get("/datasets/{dataset_id}/export/csv")
+def export_dataset_csv(
+    dataset_id: int,
+    db: Session = Depends(get_db)
+):
+    dataset = get_dataset_or_404(dataset_id, db)
+    file_path = get_dataset_path(dataset)
+
+    if not file_path.is_file():
         raise HTTPException(
             status_code=404,
-            detail="Dataset not found"
+            detail="Dataset file not found"
         )
 
-    file_path = Path(dataset.file_path)
-
-    if not file_path.is_absolute():
-        file_path = Path(__file__).resolve().parent.parent / file_path
-
-    if not file_path.exists():
+    if file_path.suffix.lower() != ".csv":
         raise HTTPException(
-            status_code=404,
-            detail="CSV file not found on the server"
+            status_code=400,
+            detail="Only CSV files can be exported"
         )
 
-    try:
-        df = pd.read_csv(file_path)
+    return FileResponse(
+        path=str(file_path),
+        media_type="text/csv",
+        filename=Path(dataset.filename).name
+    )
 
-        missing_values = {
-            str(column): int(count)
-            for column, count in df.isnull().sum().items()
-        }
 
-        column_types = {
-            str(column): str(dtype)
-            for column, dtype in df.dtypes.items()
-        }
-
-        numeric_columns = df.select_dtypes(
-            include="number"
-        ).columns
-
-        numeric_summary = {}
-
-        for column in numeric_columns:
-            values = df[column].dropna()
-
-            numeric_summary[str(column)] = {
-                "mean": None if values.empty else float(values.mean()),
-                "minimum": None if values.empty else float(values.min()),
-                "maximum": None if values.empty else float(values.max())
-            }
-
-        return {
-            "dataset_id": dataset.id,
-            "filename": dataset.filename,
-            "total_rows": int(len(df)),
-            "total_columns": int(len(df.columns)),
-            "duplicate_rows": int(df.duplicated().sum()),
-            "missing_values": missing_values,
-            "column_types": column_types,
-            "numeric_summary": numeric_summary
-        }
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Dataset analysis failed: {str(e)}"
-        )
-
+# --------------------------------------------------
+# DATASET INSIGHTS
+# --------------------------------------------------
 
 @app.get("/datasets/{dataset_id}/insights")
 def get_dataset_insights(
     dataset_id: int,
     db: Session = Depends(get_db)
 ):
-    import os
-    import pandas as pd
-    from fastapi import HTTPException
+    dataset = get_dataset_or_404(dataset_id, db)
+    df = read_dataset(dataset)
 
-    # Find the dataset in the database
-    dataset = db.query(models.Dataset).filter(
-        models.Dataset.id == dataset_id
-    ).first()
+    findings = generate_evidence(df)
+    insights = convert_to_legacy_insights(findings)
 
-    if not dataset:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset not found"
-        )
+    return {
+        "dataset_id": dataset_id,
+        "filename": dataset.filename,
+        "total_insights": len(insights),
+        "insights": insights
+    }
 
-    # Locate the uploaded CSV file
-    file_path = dataset.file_path
 
-    if not os.path.isabs(file_path):
-        file_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            file_path
-        )
+# --------------------------------------------------
+# INSIGHTTRACE AI
+# --------------------------------------------------
 
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset file not found"
-        )
+@app.get("/datasets/{dataset_id}/insighttrace")
+def get_insighttrace(
+    dataset_id: int,
+    db: Session = Depends(get_db)
+):
+    dataset = get_dataset_or_404(dataset_id, db)
+    df = read_dataset(dataset)
+
+    findings = generate_evidence(df)
+
+    ai_result = explain_findings(findings)
+
+    return {
+        "dataset_id": dataset_id,
+        "filename": dataset.filename,
+        "engine": "InsightTrace AI",
+        "total_findings": len(findings),
+        "findings": findings,
+        "ai": ai_result
+    }
+
+
+# --------------------------------------------------
+# DEMO DATASET REGISTRATION
+# --------------------------------------------------
+
+@app.post("/datasets/demo/register")
+def register_demo_datasets(
+    db: Session = Depends(get_db)
+):
+    demo_folder = PROJECT_ROOT / "data"
+
+    demo_filenames = [
+        "BankCredit.csv",
+        "Loan.csv"
+    ]
+
+    registered = []
 
     try:
-        df = pd.read_csv(file_path)
+        for filename in demo_filenames:
+            file_path = demo_folder / filename
 
-        insights = []
-
-        # 1. Dataset overview
-        insights.append({
-            "type": "overview",
-            "severity": "info",
-            "title": "Dataset Overview",
-            "description": (
-                f"The dataset contains {len(df)} rows "
-                f"and {len(df.columns)} columns."
-            ),
-            "recommendation": (
-                "Review the columns and identify the metrics "
-                "most relevant to your business."
-            )
-        })
-
-        # 2. Missing value detection
-        missing = df.isnull().sum()
-        missing_total = int(missing.sum())
-
-        if missing_total > 0:
-            affected_columns = [
-                str(column)
-                for column in missing[missing > 0].index
-            ]
-
-            insights.append({
-                "type": "data_quality",
-                "severity": "warning",
-                "title": "Missing Values Detected",
-                "description": (
-                    f"Found {missing_total} missing values "
-                    f"across {len(affected_columns)} columns."
-                ),
-                "recommendation": (
-                    "Review the affected columns and decide "
-                    "whether to fill or remove missing values."
-                ),
-                "columns": affected_columns
-            })
-        else:
-            insights.append({
-                "type": "data_quality",
-                "severity": "success",
-                "title": "No Missing Values",
-                "description": (
-                    "No missing values were found in the dataset."
-                ),
-                "recommendation": (
-                    "Continue checking duplicates and unusual values."
+            if not file_path.is_file():
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Demo file not found: {filename}"
                 )
-            })
 
-        # 3. Duplicate row detection
-        duplicate_count = int(df.duplicated().sum())
+            # Validate before registering.
+            pd.read_csv(file_path, nrows=5)
 
-        if duplicate_count > 0:
-            insights.append({
-                "type": "data_quality",
-                "severity": "warning",
-                "title": "Duplicate Records",
-                "description": (
-                    f"Found {duplicate_count} duplicate rows."
-                ),
-                "recommendation": (
-                    "Inspect duplicate rows before removing them "
-                    "to avoid deleting legitimate records."
+            absolute_path = str(file_path.resolve())
+
+            existing = (
+                db.query(models.Dataset)
+                .filter(
+                    models.Dataset.file_path == absolute_path
                 )
-            })
-        else:
-            insights.append({
-                "type": "data_quality",
-                "severity": "success",
-                "title": "No Duplicate Rows",
-                "description": (
-                    "No completely duplicated rows were found."
-                ),
-                "recommendation": (
-                    "Continue monitoring data quality as new data arrives."
-                )
-            })
-
-        # 4. Numeric column insights
-        numeric_df = df.select_dtypes(include="number")
-
-        for column in numeric_df.columns:
-            values = numeric_df[column].dropna()
-
-            if len(values) == 0:
-                continue
-
-            mean_value = float(values.mean())
-            min_value = float(values.min())
-            max_value = float(values.max())
-
-            insights.append({
-                "type": "numeric_analysis",
-                "severity": "info",
-                "title": f"{column}: Statistical Summary",
-                "description": (
-                    f"Average: {mean_value:.2f}, "
-                    f"minimum: {min_value:.2f}, "
-                    f"maximum: {max_value:.2f}."
-                ),
-                "recommendation": (
-                    "Compare these statistics with business targets "
-                    "to identify areas that may need attention."
-                ),
-                "column": str(column),
-                "mean": mean_value,
-                "minimum": min_value,
-                "maximum": max_value
-            })
-
-        # 5. Potential outlier detection using IQR
-        for column in numeric_df.columns:
-            values = numeric_df[column].dropna()
-
-            if len(values) < 4:
-                continue
-
-            q1 = values.quantile(0.25)
-            q3 = values.quantile(0.75)
-            iqr = q3 - q1
-
-            if iqr == 0:
-                continue
-
-            lower_bound = q1 - 1.5 * iqr
-            upper_bound = q3 + 1.5 * iqr
-
-            outlier_count = int(
-                ((values < lower_bound) |
-                 (values > upper_bound)).sum()
+                .first()
             )
 
-            if outlier_count > 0:
-                insights.append({
-                    "type": "outlier_detection",
-                    "severity": "warning",
-                    "title": f"Potential Outliers: {column}",
-                    "description": (
-                        f"Found {outlier_count} values outside "
-                        "the usual IQR range."
-                    ),
-                    "recommendation": (
-                        "Investigate these values before removing them. "
-                        "They may represent errors or legitimate "
-                        "unusual business cases."
-                    ),
-                    "column": str(column),
-                    "outlier_count": outlier_count
-                })
+            if existing:
+                dataset = existing
+            else:
+                dataset = models.Dataset(
+                    filename=filename,
+                    file_path=absolute_path
+                )
+
+                db.add(dataset)
+                db.flush()
+
+            registered.append({
+                "id": dataset.id,
+                "filename": dataset.filename,
+                "file_path": dataset.file_path
+            })
+
+        db.commit()
 
         return {
-            "dataset_id": dataset_id,
-            "filename": dataset.filename,
-            "total_insights": len(insights),
-            "insights": insights
+            "message": "Demo datasets are ready.",
+            "datasets": registered
         }
 
     except HTTPException:
+        db.rollback()
         raise
-    except Exception as error:
+
+    except Exception:
+        db.rollback()
+
         raise HTTPException(
             status_code=500,
-            detail=f"Could not generate insights: {str(error)}"
+            detail="Could not register demo datasets"
         )

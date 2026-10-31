@@ -1,0 +1,189 @@
+
+.reports-page {
+  --reports-muted: var(--text-secondary, #77839b);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  color: var(--text-primary, #18243a);
+  font-family: "DM Sans", Inter, "Segoe UI", sans-serif;
+}
+
+.reports-page .header {
+  padding: 28px 30px;
+  border: 1px solid #e0e5ff;
+  border-radius: 17px;
+  background: linear-gradient(115deg, #f0f3ff, #fbfaff);
+}
+
+.reports-page .header h1 {
+  margin: 0;
+  color: #202847;
+  font-size: clamp(26px, 3vw, 35px);
+  font-weight: 800;
+  letter-spacing: -1.1px;
+}
+
+.reports-page .header p {
+  margin: 9px 0 0;
+  color: #727d98;
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.reports-page .dataset-section {
+  padding: 22px;
+  border: 1px solid var(--border-color, #e7ebf4);
+  border-radius: 15px;
+  background: var(--surface, #fff);
+  box-shadow: 0 5px 20px rgba(29, 44, 77, .025);
+}
+
+.reports-page .dataset-section h2 {
+  margin: 0 0 13px;
+  color: var(--text-primary, #18243a);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.reports-page .dataset-section > p {
+  color: var(--reports-muted);
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.reports-page .dataset-section select {
+  width: 100%;
+  max-width: 440px;
+  min-height: 43px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color, #e1e6ef);
+  border-radius: 9px;
+  outline: none;
+  color: var(--text-primary, #18243a);
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 11px;
+}
+
+.reports-page .dataset-section select:focus {
+  border-color: #8c98fa;
+  box-shadow: 0 0 0 3px rgba(89, 104, 242, .09);
+}
+
+.reports-page .report-json {
+  max-width: 100%;
+  max-height: 440px;
+  overflow: auto;
+  margin: 16px 0 0;
+  padding: 18px;
+  border: 1px solid var(--border-color, #e7ebf4);
+  border-radius: 10px;
+  color: var(--text-primary, #253153);
+  background: var(--page-bg, #f8f9ff);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reports-page .report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.reports-page .report-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 43px;
+  padding: 0 17px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: white;
+  background: #5969ed;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: transform .18s ease, background .18s ease;
+}
+
+.reports-page .report-actions button:hover {
+  transform: translateY(-1px);
+  background: #4655d8;
+}
+
+.reports-page .report-actions button + button {
+  border-color: var(--border-color, #e1e6ef);
+  color: var(--text-primary, #18243a);
+  background: var(--surface, #fff);
+}
+
+.reports-page .report-actions button + button:hover {
+  background: var(--page-bg, #f8f9ff);
+}
+
+.reports-page .report-error {
+  padding: 13px 15px;
+  border: 1px solid #f2caca;
+  border-radius: 10px;
+  color: #b42332;
+  background: #fff4f4;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.dark-mode .reports-page .header {
+  border-color: #303a5b;
+  background: linear-gradient(115deg, #1b2541, #191e35);
+}
+
+.dark-mode .reports-page .header h1 {
+  color: #eef0ff;
+}
+
+.dark-mode .reports-page .header p {
+  color: #aab5d0;
+}
+
+.dark-mode .reports-page .dataset-section select {
+  border-color: var(--border-color, #303b53);
+  color: var(--text-primary, #edf1ff);
+  background: var(--surface, #182337);
+}
+
+.dark-mode .reports-page .report-json {
+  color: var(--text-primary, #edf1ff);
+  background: var(--page-bg, #141e30);
+}
+
+.dark-mode .reports-page .report-actions button + button {
+  border-color: var(--border-color, #303b53);
+  color: var(--text-primary, #edf1ff);
+  background: var(--surface, #182337);
+}
+
+.dark-mode .reports-page .report-error {
+  border-color: #65343c;
+  color: #ffb7be;
+  background: #321d28;
+}
+
+@media (max-width: 600px) {
+  .reports-page .header,
+  .reports-page .dataset-section {
+    padding: 18px;
+  }
+
+  .reports-page .report-actions {
+    flex-direction: column;
+  }
+
+  .reports-page .report-actions button {
+    width: 100%;
+  }
+}
