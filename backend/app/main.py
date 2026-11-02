@@ -839,3 +839,13 @@ def register_demo_datasets(
             status_code=500,
             detail="Could not register demo datasets"
         )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ai-business-intelligence-platform-opal.vercel.app"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
