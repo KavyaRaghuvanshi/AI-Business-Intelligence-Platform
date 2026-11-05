@@ -284,12 +284,11 @@ AI-Business-Intelligence-Platform/
 │   ├── security.py                 # Authentication and password utilities
 │   └── requirements.txt            # Python dependencies
 ├── frontend/
-│   └── my-app/
-│       ├── src/
-│       │   ├── pages/              # Application pages
-│       │   └── services/            # Frontend API configuration
-│       ├── package.json
-│       └── vite.config.js
+│   ├── src/
+│   │   ├── pages/              # Application pages
+│   │   └── services/            # Frontend API configuration
+│   ├── package.json
+│   └── vite.config.js
 ├── data/                           # Optional demo CSV files
 └── README.md
 ```
