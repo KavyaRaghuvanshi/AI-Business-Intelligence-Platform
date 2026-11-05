@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import {
   Sparkles,
@@ -22,11 +21,72 @@ import {
 import "./AIInsights.css";
 import { API } from "../services/api";
 
+const REQUEST_TIMEOUT_MS = 90000;
+
+function getSeverity(severity) {
+  if (severity === "warning") return "warning";
+  if (severity === "success") return "success";
+  return "info";
+}
+
+function getFindingIcon(category) {
+  if (category === "data_quality") return <ShieldCheck size={21} />;
+  if (category === "numeric_analysis") return <ChartNoAxesCombined size={21} />;
+  if (category === "outlier_detection") return <TriangleAlert size={21} />;
+  if (category === "overview") return <Database size={21} />;
+  return <Lightbulb size={21} />;
+}
+
+function buildEvidence(item) {
+  if (item.evidence && typeof item.evidence === "object") {
+    return item.evidence;
+  }
+
+  const evidence = {};
+
+  if (Array.isArray(item.columns) && item.columns.length > 0) {
+    evidence.affected_columns = item.columns;
+  }
+
+  [
+    "column",
+    "mean",
+    "median",
+    "minimum",
+    "maximum",
+    "outlier_count",
+    "valid_values",
+    "missing_values",
+  ].forEach((key) => {
+    if (item[key] !== undefined && item[key] !== null) {
+      evidence[key] = item[key];
+    }
+  });
+
+  return evidence;
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined) return "Not available";
+
+  if (typeof value === "number") {
+    return Number.isInteger(value)
+      ? value.toLocaleString()
+      : value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value, null, 2);
+  }
+
+  return String(value);
+}
 
 function AIInsights() {
   const [datasets, setDatasets] = useState([]);
   const [datasetId, setDatasetId] = useState("");
-  const [trace, setTrace] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [filename, setFilename] = useState("");
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,54 +94,42 @@ function AIInsights() {
   const [expandedFindings, setExpandedFindings] = useState({});
   const [filter, setFilter] = useState("all");
 
-  const findings = Array.isArray(trace?.findings)
-    ? trace.findings
-    : [];
-
-  const ai = trace?.ai || {};
-  const filename = trace?.filename || "";
-
-  // Load the available datasets.
+  // Load the dataset list and select the newest returned dataset by default.
   useEffect(() => {
+    const controller = new AbortController();
     let cancelled = false;
 
     async function loadDatasets() {
       setLoadingDatasets(true);
+      setError("");
 
       try {
-        const response = await fetch(`${API}/datasets`);
+        const response = await fetch(`${API}/datasets`, {
+          signal: controller.signal,
+        });
+
+        const result = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error("Could not load datasets.");
+          throw new Error(result.detail || "Could not load datasets.");
         }
-
-        const result = await response.json();
 
         if (!cancelled) {
           const list = Array.isArray(result) ? result : [];
           setDatasets(list);
-
-          // Select the first dataset automatically.
           setDatasetId((currentId) => {
-            if (currentId && list.some(
-              (item) => String(item.id) === currentId
-            )) {
+            if (currentId && list.some((item) => String(item.id) === currentId)) {
               return currentId;
             }
-
             return list.length ? String(list[0].id) : "";
           });
         }
-      } catch {
-        if (!cancelled) {
-          setError(
-            "Could not load datasets. Check your backend connection."
-          );
+      } catch (err) {
+        if (!cancelled && err.name !== "AbortError") {
+          setError(err.message || "Could not load datasets. Check your backend connection.");
         }
       } finally {
-        if (!cancelled) {
-          setLoadingDatasets(false);
-        }
+        if (!cancelled) setLoadingDatasets(false);
       }
     }
 
@@ -89,57 +137,69 @@ function AIInsights() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
-  // Fetch evidence and AI explanations from the existing endpoint.
+  // AI Insights uses the fast evidence endpoint. The separate InsightTrace AI
+  // page can call /insighttrace when generated AI explanations are required.
   useEffect(() => {
     if (!datasetId) {
-  return;
-}
+      setInsights([]);
+      setFilename("");
+      setLoading(false);
+      return undefined;
+    }
 
+    const controller = new AbortController();
     let cancelled = false;
+    let timedOut = false;
 
     async function loadInsights() {
       setLoading(true);
       setError("");
-      setTrace(null);
+      setInsights([]);
+      setFilename("");
       setExpandedFindings({});
+
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
 
       try {
         const response = await fetch(
-          `${API}/datasets/${datasetId}/insighttrace`
+          `${API}/datasets/${datasetId}/insights`,
+          { signal: controller.signal }
         );
 
+        const result = await response.json().catch(() => ({}));
+
         if (!response.ok) {
-          let message = "Could not analyze this dataset.";
-
-          try {
-            const body = await response.json();
-            if (body.detail) message = body.detail;
-          } catch {
-            // Use the default message if the response isn't JSON.
-          }
-
-          throw new Error(message);
+          throw new Error(
+            result.detail || `Analysis request failed (${response.status}).`
+          );
         }
 
-        const result = await response.json();
-
         if (!cancelled) {
-          setTrace(result);
+          setInsights(Array.isArray(result.insights) ? result.insights : []);
+          setFilename(result.filename || "");
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err.message ||
-            "Could not generate insights. Please try again."
-          );
+          if (timedOut) {
+            setError(
+              "Analysis exceeded 90 seconds. The backend may be waking up or the dataset may be too large. Please retry."
+            );
+          } else if (err.name === "AbortError") {
+            setError("The analysis request was cancelled. Please try again.");
+          } else {
+            setError(err.message || "Could not generate insights. Please try again.");
+          }
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        window.clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -147,28 +207,25 @@ function AIInsights() {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [datasetId, retryKey]);
 
-  // Match each AI explanation to its evidence-based finding.
-  const explanationMap = useMemo(() => {
-    const map = {};
-
-    if (Array.isArray(ai.explanations)) {
-      ai.explanations.forEach((item) => {
-        if (item.finding_id) {
-          map[item.finding_id] = item;
-        }
-      });
-    }
-
-    return map;
-  }, [ai.explanations]);
+  const findings = useMemo(
+    () =>
+      insights.map((item, index) => ({
+        ...item,
+        id: item.id || `${item.type || "finding"}-${index}`,
+        category: item.category || item.type || "general",
+        claim: item.claim || item.description || "No finding description was provided.",
+        evidence: buildEvidence(item),
+      })),
+    [insights]
+  );
 
   const warningCount = findings.filter(
     (item) => item.severity === "warning"
   ).length;
-
   const successCount = findings.filter(
     (item) => item.severity === "success"
   ).length;
@@ -178,30 +235,9 @@ function AIInsights() {
     return item.severity === filter;
   });
 
-  function getFindingIcon(category) {
-    if (category === "data_quality") {
-      return <ShieldCheck size={21} />;
-    }
-
-    if (category === "numeric_analysis") {
-      return <ChartNoAxesCombined size={21} />;
-    }
-
-    if (category === "outlier_detection") {
-      return <TriangleAlert size={21} />;
-    }
-
-    if (category === "overview") {
-      return <Database size={21} />;
-    }
-
-    return <Lightbulb size={21} />;
-  }
-
-  function getSeverity(severity) {
-    if (severity === "warning") return "warning";
-    if (severity === "success") return "success";
-    return "info";
+  function retryAnalysis() {
+    setError("");
+    setRetryKey((value) => value + 1);
   }
 
   function toggleFinding(id) {
@@ -211,107 +247,54 @@ function AIInsights() {
     }));
   }
 
-  function formatValue(value) {
-    if (value === null || value === undefined) {
-      return "Not available";
-    }
-
-    if (typeof value === "number") {
-      return Number.isInteger(value)
-        ? value.toLocaleString()
-        : value.toLocaleString(undefined, {
-            maximumFractionDigits: 4,
-          });
-    }
-
-    if (typeof value === "object") {
-      return JSON.stringify(value, null, 2);
-    }
-
-    return String(value);
-  }
-
   return (
     <div className="ai-insights-page">
-      {/* Hero */}
       <header className="ai-insights-hero">
         <div className="ai-insights-hero-copy">
           <span className="ai-insights-eyebrow">
-            <Sparkles size={14} />
-            INTELLIGENCE CENTER
+            <Sparkles size={14} /> INTELLIGENCE CENTER
           </span>
-
           <h1>AI-powered insights</h1>
-
           <p>
-            Turn your dataset into understandable findings,
-            evidence-backed explanations, and actionable business
-            recommendations.
+            Turn your dataset into understandable findings, evidence-backed
+            checks, and actionable business recommendations.
           </p>
-
           <div className="ai-insights-hero-meta">
-            <span>
-              <BrainCircuit size={15} />
-              AI-assisted analysis
-            </span>
-            <span>
-              <ShieldCheck size={15} />
-              Evidence-based findings
-            </span>
+            <span><BrainCircuit size={15} /> Automated data analysis</span>
+            <span><ShieldCheck size={15} /> Evidence-based findings</span>
           </div>
         </div>
 
         <div className="ai-insights-hero-art" aria-hidden="true">
           <div className="ai-insights-orbit orbit-one" />
           <div className="ai-insights-orbit orbit-two" />
-
-          <div className="ai-insights-brain">
-            <BrainCircuit size={48} />
-          </div>
-
-          <Sparkles
-            className="ai-insights-sparkle sparkle-one"
-            size={22}
-          />
-          <Sparkles
-            className="ai-insights-sparkle sparkle-two"
-            size={15}
-          />
+          <div className="ai-insights-brain"><BrainCircuit size={48} /></div>
+          <Sparkles className="ai-insights-sparkle sparkle-one" size={22} />
+          <Sparkles className="ai-insights-sparkle sparkle-two" size={15} />
         </div>
       </header>
 
-      {/* Error */}
       {error && (
         <div className="ai-insights-error panel" role="alert">
           <AlertCircle size={20} />
-
           <p>{error}</p>
-
           <button
+            type="button"
             className="ai-insights-retry-button"
-            onClick={() => {
-              setError("");
-              setRetryKey((value) => value + 1);
-            }}
+            onClick={retryAnalysis}
+            disabled={loadingDatasets}
           >
-            <RefreshCw size={15} />
-            Retry
+            <RefreshCw size={15} /> Retry
           </button>
         </div>
       )}
 
-      {/* Dataset selector */}
       <section className="ai-insights-selector panel">
         <div className="ai-insights-selector-copy">
-          <span className="ai-insights-selector-icon">
-            <Database size={20} />
-          </span>
-
+          <span className="ai-insights-selector-icon"><Database size={20} /></span>
           <div>
             <h2>Choose your dataset</h2>
-            <p>
-              Select an uploaded CSV file to generate its insights.
-            </p>
+            <p>Select an uploaded CSV file to generate its insights.</p>
           </div>
         </div>
 
@@ -332,7 +315,6 @@ function AIInsights() {
                 ? "Choose a dataset"
                 : "No datasets available"}
           </option>
-
           {datasets.map((dataset) => (
             <option key={dataset.id} value={String(dataset.id)}>
               {dataset.filename}
@@ -343,8 +325,8 @@ function AIInsights() {
         <button
           type="button"
           className="ai-insights-refresh-button"
-          onClick={() => setRetryKey((value) => value + 1)}
-          disabled={!datasetId || loading}
+          onClick={retryAnalysis}
+          disabled={!datasetId || loading || loadingDatasets}
           aria-label="Refresh insights"
           title="Refresh insights"
         >
@@ -353,135 +335,94 @@ function AIInsights() {
       </section>
 
       {loading && datasetId && (
-        <div className="ai-insights-current-dataset">
+        <div className="ai-insights-current-dataset" aria-live="polite">
           <span className="ai-insights-dataset-dot" />
-          Analyzing <strong>{filename}</strong>
+          Analyzing <strong>{datasets.find((item) => String(item.id) === datasetId)?.filename || "selected dataset"}</strong>
         </div>
       )}
 
-      {/* Loading */}
-      {!loading && !error && datasetId && trace && (
+      {/* Loading state is shown only while the request is actually pending. */}
+      {loading && datasetId && (
         <div className="ai-insights-state panel" aria-live="polite">
           <span className="ai-insights-loading-icon">
             <LoaderCircle size={28} className="ai-insights-spin" />
           </span>
-
           <h2>Analyzing your dataset</h2>
           <p>
-            Examining the data, collecting evidence, and preparing
-            explanations where AI is available.
+            Checking data quality, duplicate records, numeric summaries, and
+            potential outliers. A sleeping backend may need a brief warm-up.
           </p>
         </div>
       )}
 
-      {/* Main results */}
-      {!error && !datasetId && (
+      {/* Dataset results appear after a successful response. */}
+      {!loading && !error && datasetId && (
         <>
-          {/* Metrics */}
+          {filename && (
+            <div className="ai-insights-current-dataset">
+              <span className="ai-insights-dataset-dot" />
+              Showing findings for <strong>{filename}</strong>
+            </div>
+          )}
+
           <section className="ai-insights-metrics">
             <article className="ai-insights-metric">
               <div className="ai-insights-metric-top">
-                <span className="ai-insights-metric-icon indigo">
-                  <FileSearch size={20} />
-                </span>
-                <span className="ai-insights-metric-caption">
-                  TOTAL FINDINGS
-                </span>
+                <span className="ai-insights-metric-icon indigo"><FileSearch size={20} /></span>
+                <span className="ai-insights-metric-caption">TOTAL FINDINGS</span>
               </div>
-
               <strong>{findings.length}</strong>
               <p>Evidence-based findings</p>
             </article>
 
             <article className="ai-insights-metric">
               <div className="ai-insights-metric-top">
-                <span className="ai-insights-metric-icon amber">
-                  <TriangleAlert size={20} />
-                </span>
-                <span className="ai-insights-metric-caption">
-                  ATTENTION
-                </span>
+                <span className="ai-insights-metric-icon amber"><TriangleAlert size={20} /></span>
+                <span className="ai-insights-metric-caption">ATTENTION</span>
               </div>
-
               <strong>{warningCount}</strong>
               <p>Findings requiring review</p>
             </article>
 
             <article className="ai-insights-metric">
               <div className="ai-insights-metric-top">
-                <span className="ai-insights-metric-icon green">
-                  <CheckCircle2 size={20} />
-                </span>
-                <span className="ai-insights-metric-caption">
-                  POSITIVE CHECKS
-                </span>
+                <span className="ai-insights-metric-icon green"><CheckCircle2 size={20} /></span>
+                <span className="ai-insights-metric-caption">POSITIVE CHECKS</span>
               </div>
-
               <strong>{successCount}</strong>
               <p>Checks passed</p>
             </article>
           </section>
 
-          {/* AI summary */}
           <section className="ai-insights-summary panel">
             <div className="ai-insights-summary-heading">
-              <span className="ai-insights-summary-icon">
-                <BrainCircuit size={22} />
-              </span>
-
+              <span className="ai-insights-summary-icon"><BrainCircuit size={22} /></span>
               <div>
-                <span className="ai-insights-eyebrow">
-                  AI ANALYST
-                </span>
-                <h2>Executive summary</h2>
+                <span className="ai-insights-eyebrow">ANALYSIS ENGINE</span>
+                <h2>Analysis summary</h2>
               </div>
-
-              <span
-                className={`ai-insights-ai-status ${
-                  ai.available ? "available" : "unavailable"
-                }`}
-              >
-                <span />
-                {ai.available ? "AI explanation available" : "Evidence mode"}
+              <span className="ai-insights-ai-status available"><span /> Evidence analysis</span>
+            </div>
+            <p className="ai-insights-summary-text">
+              The fast analysis checks dataset structure, missing values,
+              duplicate records, numeric distributions, and potential outliers.
+              For generated executive explanations, open the separate InsightTrace AI page.
+            </p>
+            <div className="ai-insights-fallback-note">
+              <Info size={16} />
+              <span>
+                These findings are calculated from the dataset. Review the supporting
+                evidence and business context before acting on a recommendation.
               </span>
             </div>
-
-            {ai.summary ? (
-              <p className="ai-insights-summary-text">
-                {ai.summary}
-              </p>
-            ) : (
-              <p className="ai-insights-summary-text">
-                {ai.message ||
-                  "Evidence-based findings are available below. Configure your AI provider to enable generated explanations."}
-              </p>
-            )}
-
-            {!ai.available && (
-              <div className="ai-insights-fallback-note">
-                <Info size={16} />
-                <span>
-                  AI explanations are unavailable for this request.
-                  Findings below are generated from the dataset using
-                  your analysis rules.
-                </span>
-              </div>
-            )}
           </section>
 
-          {/* Findings heading and filters */}
           <div className="ai-insights-section-heading">
             <div>
-              <span className="ai-insights-eyebrow">
-                YOUR ANALYSIS
-              </span>
+              <span className="ai-insights-eyebrow">YOUR ANALYSIS</span>
               <h2>Findings &amp; recommendations</h2>
-              <p>
-                Expand a finding to inspect its evidence, AI explanation,
-                and recommended business action.
-              </p>
+              <p>Expand a finding to inspect its available supporting evidence.</p>
             </div>
-
             <span className="ai-insights-result-count">
               {filteredFindings.length} of {findings.length} findings
             </span>
@@ -497,9 +438,7 @@ function AIInsights() {
               <button
                 key={option.value}
                 type="button"
-                className={`ai-insights-filter ${
-                  filter === option.value ? "active" : ""
-                }`}
+                className={`ai-insights-filter ${filter === option.value ? "active" : ""}`}
                 onClick={() => setFilter(option.value)}
               >
                 {option.label}
@@ -507,109 +446,66 @@ function AIInsights() {
             ))}
           </div>
 
-          {/* Finding cards */}
           {filteredFindings.length > 0 ? (
             <section className="ai-insights-grid">
               {filteredFindings.map((item, index) => {
                 const severity = getSeverity(item.severity);
-                const explanation = explanationMap[item.id];
                 const expanded = Boolean(expandedFindings[item.id]);
+                const evidenceEntries = Object.entries(item.evidence || {});
 
                 return (
                   <article
                     className={`ai-insight-card severity-${severity}`}
-                    key={item.id || `${item.category}-${index}`}
+                    key={item.id}
                   >
                     <div className="ai-insight-card-top">
                       <span className={`ai-insight-type-icon ${severity}`}>
                         {getFindingIcon(item.category)}
                       </span>
-
                       <span className={`ai-insight-severity ${severity}`}>
-                        <span />
-                        {item.severity || "info"}
+                        <span /> {item.severity || "info"}
                       </span>
                     </div>
 
                     <span className="ai-insight-index">
                       FINDING {String(index + 1).padStart(2, "0")}
                     </span>
-
                     <h3>{item.title || "Data finding"}</h3>
-
-                    <p className="ai-insight-description">
-                      {item.claim || "No finding description was provided."}
-                    </p>
+                    <p className="ai-insight-description">{item.claim}</p>
 
                     <div className="ai-insight-recommendation">
-                      <span className="ai-insight-recommendation-icon">
-                        <Target size={17} />
-                      </span>
-
+                      <span className="ai-insight-recommendation-icon"><Target size={17} /></span>
                       <div>
                         <strong>Recommended action</strong>
-                        <p>
-                          {explanation?.business_action ||
-                            item.recommendation ||
-                            "Review this finding to determine the appropriate next step."}
-                        </p>
+                        <p>{item.recommendation || "Review this finding in the context of your business objective."}</p>
                       </div>
                     </div>
-
-                    {explanation?.explanation && (
-                      <div className="ai-insight-ai-explanation">
-                        <div className="ai-insight-ai-explanation-title">
-                          <Sparkles size={16} />
-                          <strong>AI explanation</strong>
-                        </div>
-
-                        <p>{explanation.explanation}</p>
-                      </div>
-                    )}
 
                     <button
                       type="button"
                       className="ai-insight-evidence-toggle"
-                      onClick={() => toggleFinding(item.id || index)}
+                      onClick={() => toggleFinding(item.id)}
                       aria-expanded={expanded}
                     >
-                      <span>
-                        <FileSearch size={16} />
-                        View supporting evidence
-                      </span>
-
-                      {expanded ? (
-                        <ChevronUp size={17} />
-                      ) : (
-                        <ChevronDown size={17} />
-                      )}
+                      <span><FileSearch size={16} /> View supporting evidence</span>
+                      {expanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
                     </button>
 
                     {expanded && (
                       <div className="ai-insight-evidence">
-                        {item.evidence &&
-                        Object.keys(item.evidence).length > 0 ? (
-                          Object.entries(item.evidence).map(
-                            ([key, value]) => (
-                              <div
-                                className="ai-insight-evidence-row"
-                                key={key}
-                              >
-                                <span>
-                                  {key.replaceAll("_", " ")}
-                                </span>
-
-                                {typeof value === "object" &&
-                                value !== null ? (
-                                  <pre>{formatValue(value)}</pre>
-                                ) : (
-                                  <strong>{formatValue(value)}</strong>
-                                )}
-                              </div>
-                            )
-                          )
+                        {evidenceEntries.length > 0 ? (
+                          evidenceEntries.map(([key, value]) => (
+                            <div className="ai-insight-evidence-row" key={key}>
+                              <span>{key.replaceAll("_", " ")}</span>
+                              {typeof value === "object" && value !== null ? (
+                                <pre>{formatValue(value)}</pre>
+                              ) : (
+                                <strong>{formatValue(value)}</strong>
+                              )}
+                            </div>
+                          ))
                         ) : (
-                          <p>No supporting evidence was returned.</p>
+                          <p>No additional supporting evidence was returned for this finding.</p>
                         )}
                       </div>
                     )}
@@ -619,56 +515,44 @@ function AIInsights() {
             </section>
           ) : (
             <div className="ai-insights-state panel">
-              <span className="ai-insights-state-icon">
-                <FileSearch size={27} />
-              </span>
-
+              <span className="ai-insights-state-icon"><FileSearch size={27} /></span>
               <h2>No findings in this filter</h2>
               <p>Try another filter to see more results.</p>
-
-              <button
-                type="button"
-                className="ai-insights-retry-button"
-                onClick={() => setFilter("all")}
-              >
-                Show all findings
-                <ArrowRight size={15} />
+              <button type="button" className="ai-insights-retry-button" onClick={() => setFilter("all")}>
+                Show all findings <ArrowRight size={15} />
               </button>
             </div>
           )}
 
-          {/* AI explanation coverage */}
           {findings.length > 0 && (
             <div className="ai-insights-footer-note">
               <Lightbulb size={17} />
               <p>
-                Findings come from your dataset analysis engine. AI
-                explanations are shown only when a returned explanation
-                matches the finding ID. Always verify recommendations
-                against your business context.
+                Findings are generated by the dataset analysis engine. Potential
+                outliers are statistical flags, not necessarily data errors.
+                Validate results against your business context.
               </p>
             </div>
           )}
         </>
       )}
 
-      {/* No dataset selected */}
-      {!loading && !error && !datasetId && (
+      {!loading && !error && !datasetId && !loadingDatasets && (
         <div className="ai-insights-state panel">
-          <span className="ai-insights-state-icon">
-            <Database size={27} />
-          </span>
-
+          <span className="ai-insights-state-icon"><Database size={27} /></span>
           <h2>Your insights start with a dataset</h2>
-          <p>
-            Select a dataset above to view its findings and AI explanations.
-          </p>
-
-          {datasets.length === 0 && !loadingDatasets && (
-            <p className="ai-insights-state-hint">
-              Upload a CSV file from the Datasets page to get started.
-            </p>
+          <p>Select a dataset above to view its findings and recommendations.</p>
+          {datasets.length === 0 && (
+            <p className="ai-insights-state-hint">Upload a CSV file from the Datasets page to get started.</p>
           )}
+        </div>
+      )}
+
+      {loadingDatasets && (
+        <div className="ai-insights-state panel" aria-live="polite">
+          <LoaderCircle size={25} className="ai-insights-spin" />
+          <h2>Loading datasets</h2>
+          <p>Retrieving your dataset library.</p>
         </div>
       )}
     </div>
