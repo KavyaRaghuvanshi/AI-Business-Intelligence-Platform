@@ -1,4 +1,3 @@
-
 import {
   useCallback,
   useEffect,
@@ -28,8 +27,6 @@ import {
 import "./Dataset.css";
 import { API } from "../services/api";
 
-
-
 const demoInfo = {
   "BankCredit.csv": {
     title: "BankCredit Performance",
@@ -45,6 +42,46 @@ const demoInfo = {
   },
 };
 
+// Normalize stored paths so Windows and Linux paths are handled consistently.
+function getStoredPath(dataset) {
+  return String(dataset?.file_path || "")
+    .replace(/\\/g, "/")
+    .trim()
+    .toLowerCase();
+}
+
+function isNeonStoredDataset(dataset) {
+  return getStoredPath(dataset).startsWith("neon://");
+}
+
+function isLegacyLocalUpload(dataset) {
+  const path = getStoredPath(dataset);
+  return path.startsWith("uploads/") || path.includes("/uploads/");
+}
+
+function isDemoDataset(dataset) {
+  const path = getStoredPath(dataset);
+  const filename = String(dataset?.filename || "");
+
+  // A filename alone is not enough: an uploaded Loan.csv is not a demo.
+  const isKnownDemo = Object.prototype.hasOwnProperty.call(
+    demoInfo,
+    filename
+  );
+
+  return (
+    isKnownDemo &&
+    (path.startsWith("data/") || path.includes("/data/"))
+  );
+}
+
+function getDatasetStatus(dataset) {
+  if (isNeonStoredDataset(dataset)) return "Cloud storage";
+  if (isLegacyLocalUpload(dataset)) return "Re-upload required";
+  if (isDemoDataset(dataset)) return "Demo dataset";
+  return "Server file";
+}
+
 function Dataset() {
   const [datasets, setDatasets] = useState([]);
   const [search, setSearch] = useState("");
@@ -59,71 +96,79 @@ function Dataset() {
   const [previewData, setPreviewData] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
-  
+
   const fileInput = useRef(null);
 
+  const loadDatasets = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/datasets`);
 
-const loadDatasets = useCallback(async () => {
-  try {
-    const response = await fetch(`${API}/datasets`);
+      if (!response.ok) {
+        let detail = "Could not load datasets.";
+        try {
+          const data = await response.json();
+          detail = data.detail || detail;
+        } catch {
+          // Keep the default message when the response is not JSON.
+        }
+        throw new Error(detail);
+      }
 
-    if (!response.ok) {
-      throw new Error("Could not load datasets.");
+      const data = await response.json();
+      setDatasets(Array.isArray(data) ? data : []);
+      setError("");
+    } catch (err) {
+      setError(err.message || "Unable to connect to the backend.");
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    const data = await response.json();
+  const prepareDemos = useCallback(async () => {
+    try {
+      const response = await fetch(`${API}/datasets/demo/register`, {
+        method: "POST",
+      });
 
-    setDatasets(Array.isArray(data) ? data : []);
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        // The error below handles non-JSON responses.
+      }
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not prepare demo datasets.");
+      }
+
+      await loadDatasets();
+    } catch (err) {
+      setError(`${err.message} You can still upload your own CSV files.`);
+    } finally {
+      setRegistering(false);
+    }
+  }, [loadDatasets]);
+
+  function refreshDatasets() {
+    setLoading(true);
     setError("");
-  } catch (err) {
-    setError(err.message || "Unable to connect to the backend.");
-  } finally {
-    setLoading(false);
+    loadDatasets();
   }
-}, []);
 
-const prepareDemos = useCallback(async () => {
-  try {
-    const response = await fetch(`${API}/datasets/demo/register`, {
-      method: "POST",
-    });
+  function refreshDemoDatasets() {
+    setRegistering(true);
+    setError("");
+    prepareDemos();
+  }
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.detail || "Could not prepare demo datasets.");
+  useEffect(() => {
+    async function initialize() {
+      await loadDatasets();
+      await prepareDemos();
     }
 
-    await loadDatasets();
-  } catch (err) {
-    setError(
-      `${err.message} You can still upload your own CSV files.`
-    );
-  } finally {
-    setRegistering(false);
-  }
-}, [loadDatasets]);
-
-function refreshDatasets() {
-  setLoading(true);
-  setError("");
-  loadDatasets();
-}
-
-function refreshDemoDatasets() {
-  setRegistering(true);
-  setError("");
-  prepareDemos();
-}
-
-useEffect(() => {
-  async function initialize() {
-    await loadDatasets();
-    await prepareDemos();
-  }
-
-  initialize();
-}, [loadDatasets, prepareDemos]);
+    initialize();
+  }, [loadDatasets, prepareDemos]);
 
   const filteredDatasets = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -135,8 +180,9 @@ useEffect(() => {
     );
   }, [datasets, search]);
 
-  const demos = datasets.filter((dataset) =>
-    Object.prototype.hasOwnProperty.call(demoInfo, dataset.filename)
+  const demos = useMemo(
+    () => datasets.filter(isDemoDataset),
+    [datasets]
   );
 
   async function uploadDataset(event) {
@@ -165,7 +211,12 @@ useEffect(() => {
         body: formData,
       });
 
-      const data = await response.json();
+      let data = {};
+      try {
+        data = await response.json();
+      } catch {
+        // The error below handles non-JSON responses.
+      }
 
       if (!response.ok) {
         throw new Error(data.detail || "Dataset upload failed.");
@@ -185,16 +236,21 @@ useEffect(() => {
   }
 
   async function openPreview(dataset) {
+    if (isLegacyLocalUpload(dataset)) {
+      setPreviewDataset(dataset);
+      setPreviewData(null);
+      setPreviewError("This older file is no longer stored on the server. Please upload the CSV again.");
+      setPreviewLoading(false);
+      return;
+    }
+
     setPreviewDataset(dataset);
     setPreviewData(null);
     setPreviewError("");
     setPreviewLoading(true);
 
     try {
-      const response = await fetch(
-        `${API}/datasets/${dataset.id}/preview`
-      );
-
+      const response = await fetch(`${API}/datasets/${dataset.id}/preview`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -214,7 +270,6 @@ useEffect(() => {
     setPreviewData(null);
     setPreviewError("");
   }
-
 
   async function downloadFile(url, filename, type) {
     const key = `${type}-${filename}`;
@@ -254,7 +309,6 @@ useEffect(() => {
       link.remove();
 
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-
       setMessage(`${filename} downloaded successfully.`);
     } catch (err) {
       setError(err.message || "Unable to download the file.");
@@ -267,6 +321,11 @@ useEffect(() => {
   }
 
   function downloadSampleCSV(dataset) {
+    if (isLegacyLocalUpload(dataset)) {
+      setError("This older file is no longer stored on the server. Please upload the CSV again.");
+      return;
+    }
+
     return downloadFile(
       `${API}/datasets/${dataset.id}/export/csv`,
       dataset.filename || `dataset-${dataset.id}.csv`,
@@ -275,9 +334,16 @@ useEffect(() => {
   }
 
   function downloadAnalysisJSON(dataset) {
-    const filename = `${
-      (dataset.filename || `dataset-${dataset.id}`).replace(/\.csv$/i, "")
-    }-analysis.json`;
+    if (isLegacyLocalUpload(dataset)) {
+      setError("This older file is no longer stored on the server. Please upload the CSV again.");
+      return;
+    }
+
+    const baseName = (dataset.filename || `dataset-${dataset.id}`).replace(
+      /\.csv$/i,
+      ""
+    );
+    const filename = `${baseName}-analysis.json`;
 
     return downloadFile(
       `${API}/datasets/${dataset.id}/analysis`,
@@ -285,7 +351,6 @@ useEffect(() => {
       "json"
     );
   }
-
 
   return (
     <div className="dataset-workspace">
@@ -400,14 +465,10 @@ useEffect(() => {
               <h2>Try a demo dataset</h2>
               <Sparkles size={17} />
             </div>
-            <p>
-              Explore sample business data without uploading a file.
-            </p>
+            <p>Explore sample business data without uploading a file.</p>
           </div>
 
-          <span className="demo-count">
-            {demos.length} of 2 available
-          </span>
+          <span className="demo-count">{demos.length} of 2 available</span>
         </div>
 
         <div className="demo-grid">
@@ -468,10 +529,10 @@ useEffect(() => {
                     title={
                       registered
                         ? "Preview this dataset"
-                        : "Waiting for demo registration"
+                        : "Demo file is not registered on the server"
                     }
                   >
-                    {registered ? "Explore data" : "Preparing…"}
+                    {registered ? "Explore data" : "Not available"}
                     <ArrowUpRight size={15} />
                   </button>
                 </div>
@@ -488,12 +549,8 @@ useEffect(() => {
         )}
 
         {!registering && demos.length < 2 && !error && (
-          <button
-            className="dataset-link-button"
-            onClick={refreshDemoDatasets}
-          >
+          <button className="dataset-link-button" onClick={refreshDemoDatasets}>
             <RefreshCw size={14} />
-            
             Refresh demo datasets
           </button>
         )}
@@ -505,9 +562,7 @@ useEffect(() => {
             <h2>Your dataset library</h2>
             <p>All uploaded and registered datasets in one place.</p>
           </div>
-          <span className="dataset-total">
-            {datasets.length} datasets
-          </span>
+          <span className="dataset-total">{datasets.length} datasets</span>
         </div>
 
         <div className="dataset-library-toolbar">
@@ -556,7 +611,15 @@ useEffect(() => {
               </thead>
               <tbody>
                 {filteredDatasets.map((dataset) => {
-                  const demo = demoInfo[dataset.filename];
+                  const demo = isDemoDataset(dataset)
+                    ? demoInfo[dataset.filename]
+                    : null;
+                  const unavailable = isLegacyLocalUpload(dataset);
+                  const csvKey = `csv-${dataset.filename || `dataset-${dataset.id}.csv`}`;
+                  const jsonFilename = `${(
+                    dataset.filename || `dataset-${dataset.id}`
+                  ).replace(/\.csv$/i, "")}-analysis.json`;
+                  const jsonKey = `json-${jsonFilename}`;
 
                   return (
                     <tr key={dataset.id}>
@@ -566,9 +629,7 @@ useEffect(() => {
                             <FileSpreadsheet size={18} />
                           </span>
                           <span>
-                            <strong>
-                              {demo?.title || dataset.filename}
-                            </strong>
+                            <strong>{demo?.title || dataset.filename}</strong>
                             <small>{dataset.filename}</small>
                           </span>
                         </div>
@@ -578,64 +639,72 @@ useEffect(() => {
                       </td>
                       <td>
                         {dataset.uploaded_at
-                          ? new Date(
-                              dataset.uploaded_at
-                            ).toLocaleDateString()
+                          ? new Date(dataset.uploaded_at).toLocaleDateString()
                           : "—"}
                       </td>
                       <td>
-                        <span className="dataset-status">
-                          <span /> Available
+                        <span
+                          className={`dataset-status ${
+                            unavailable ? "dataset-status-unavailable" : ""
+                          }`}
+                        >
+                          <span />
+                          {getDatasetStatus(dataset)}
                         </span>
                       </td>
                       <td>
-                       
-  <div className="dataset-actions">
-    <button
-      title="Preview dataset"
-      aria-label={`Preview ${dataset.filename}`}
-      onClick={() => openPreview(dataset)}
-    >
-      <Eye size={16} />
-    </button>
+                        <div className="dataset-actions">
+                          <button
+                            title={
+                              unavailable
+                                ? "This old file is missing. Please upload the CSV again."
+                                : "Preview dataset"
+                            }
+                            aria-label={`Preview ${dataset.filename}`}
+                            disabled={unavailable}
+                            onClick={() => openPreview(dataset)}
+                          >
+                            <Eye size={16} />
+                          </button>
 
-    <button
-      title="Download complete CSV"
-      aria-label={`Download CSV for ${dataset.filename}`}
-      disabled={Boolean(downloading[`csv-${dataset.filename || `dataset-${dataset.id}.csv`}`])}
-      onClick={() => downloadSampleCSV(dataset)}
-    >
-      {downloading[`csv-${dataset.filename || `dataset-${dataset.id}.csv`}`] ? (
-        <LoaderCircle size={16} className="spin" />
-      ) : (
-        <Download size={16} />
-      )}
-    </button>
+                          <button
+                            title={
+                              unavailable
+                                ? "This old file is missing. Please upload the CSV again."
+                                : "Download complete CSV"
+                            }
+                            aria-label={`Download CSV for ${dataset.filename}`}
+                            disabled={
+                              unavailable || Boolean(downloading[csvKey])
+                            }
+                            onClick={() => downloadSampleCSV(dataset)}
+                          >
+                            {downloading[csvKey] ? (
+                              <LoaderCircle size={16} className="spin" />
+                            ) : (
+                              <Download size={16} />
+                            )}
+                          </button>
 
-    <button
-      title="Download analysis report as JSON"
-      aria-label={`Download analysis report for ${dataset.filename}`}
-      disabled={Boolean(
-        downloading[
-          `json-${(
-            dataset.filename || `dataset-${dataset.id}`
-          ).replace(/\.csv$/i, "")}-analysis.json`
-        ]
-      )}
-      onClick={() => downloadAnalysisJSON(dataset)}
-    >
-      {downloading[
-        `json-${(
-          dataset.filename || `dataset-${dataset.id}`
-        ).replace(/\.csv$/i, "")}-analysis.json`
-      ] ? (
-        <LoaderCircle size={16} className="spin" />
-      ) : (
-        <FileJson size={16} />
-      )}
-    </button>
-  </div>
-
+                          <button
+                            title={
+                              unavailable
+                                ? "This old file is missing. Please upload the CSV again."
+                                : "Download analysis report as JSON"
+                            }
+                            aria-label={`Download analysis report for ${dataset.filename}`}
+                            disabled={
+                              unavailable || Boolean(downloading[jsonKey])
+                            }
+                            onClick={() => downloadAnalysisJSON(dataset)}
+                          >
+                            {downloading[jsonKey] ? (
+                              <LoaderCircle size={16} className="spin" />
+                            ) : (
+                              <FileJson size={16} />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -665,9 +734,7 @@ useEffect(() => {
                   <Table2 size={14} />
                   DATASET PREVIEW
                 </span>
-                <h2 id="dataset-preview-title">
-                  {previewDataset.filename}
-                </h2>
+                <h2 id="dataset-preview-title">{previewDataset.filename}</h2>
               </div>
               <button
                 className="preview-close-button"
@@ -707,7 +774,7 @@ function getPreviewRows(data) {
 }
 
 function PreviewTable({ data }) {
-  const rows = getPreviewRows(data);
+  const rows = useMemo(() => getPreviewRows(data), [data]);
 
   const columns = useMemo(() => {
     if (Array.isArray(data?.columns)) {

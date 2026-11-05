@@ -925,3 +925,16 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+.dataset-status-unavailable {
+  color: #dc2626 !important;
+}
+
+.dataset-status-unavailable > span {
+  background: #dc2626 !important;
+}
+
+.dataset-actions button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

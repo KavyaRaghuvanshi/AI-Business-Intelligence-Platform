@@ -89,6 +89,7 @@ function AIInsights() {
   const [filename, setFilename] = useState("");
   const [loadingDatasets, setLoadingDatasets] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [datasetRetryKey, setDatasetRetryKey] = useState(0);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
   const [expandedFindings, setExpandedFindings] = useState({});
@@ -139,7 +140,7 @@ function AIInsights() {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [datasetRetryKey]);
 
   // AI Insights uses the fast evidence endpoint. The separate InsightTrace AI
   // page can call /insighttrace when generated AI explanations are required.
@@ -236,9 +237,14 @@ function AIInsights() {
   });
 
   function retryAnalysis() {
-    setError("");
+  setError("");
+
+  if (!datasetId) {
+    setDatasetRetryKey((value) => value + 1);
+  } else {
     setRetryKey((value) => value + 1);
   }
+}
 
   function toggleFinding(id) {
     setExpandedFindings((current) => ({
