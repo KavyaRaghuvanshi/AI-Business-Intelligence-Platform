@@ -1,106 +1,140 @@
 <div align="center">
 
-# InsightTrace AI
+# ✨ InsightTrace AI
+
 ### AI-Powered Business Intelligence Platform
 
-**Turn raw CSV data into clear analysis, actionable insights, and downloadable reports.**
+**Turn raw CSV data into clear analytics, evidence-backed findings, and actionable business insights.**
 
-<p>
-  <a href="https://ai-business-intelligence-platform-opal.vercel.app/">
-    <img src="https://img.shields.io/badge/Live%20Demo-Open%20Application-2563EB?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
-  </a>
-  <a href="https://github.com/KavyaRaghuvanshi/AI-Business-Intelligence-Platform">
-    <img src="https://img.shields.io/badge/GitHub-Source%20Code-181717?style=for-the-badge&logo=github" alt="GitHub Repository" />
-  </a>
-  <a href="https://ai-business-intelligence-platform-zkre.onrender.com/docs">
-    <img src="https://img.shields.io/badge/API-Swagger%20Docs-16A34A?style=for-the-badge&logo=swagger&logoColor=white" alt="API Documentation" />
-  </a>
-</p>
+<br />
 
-<p>
-  <img src="https://img.shields.io/badge/Frontend-React-61DAFB?style=flat-square&logo=react&logoColor=222" alt="React" />
-  <img src="https://img.shields.io/badge/Build-Vite-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
-  <img src="https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Language-Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/Database-PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Cloud%20Files-Neon%20Object%20Storage-70B8FF?style=flat-square" alt="Neon Object Storage" />
-</p>
+[![🚀 Open Live Demo](https://img.shields.io/badge/🚀%20OPEN%20LIVE%20DEMO-Launch%20InsightTrace%20AI-2563EB?style=for-the-badge)](https://ai-business-intelligence-platform-opal.vercel.app/)
+
+<br />
+
+[**Live Website**](https://ai-business-intelligence-platform-opal.vercel.app/) · [**Backend API**](https://ai-business-intelligence-platform-zkre.onrender.com/) · [**API Documentation**](https://ai-business-intelligence-platform-zkre.onrender.com/docs) · [**GitHub Repository**](https://github.com/KavyaRaghuvanshi/AI-Business-Intelligence-Platform)
+
+<br />
+
+![React](https://img.shields.io/badge/React-2026?style=flat-square&logo=react&logoColor=61DAFB&color=20232A)
+![Vite](https://img.shields.io/badge/Vite-Frontend-646CFF?style=flat-square&logo=vite&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/Neon-PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Deployment](https://img.shields.io/badge/Deployment-Vercel%20%7C%20Render-black?style=flat-square)
 
 </div>
 
 ---
 
-## Overview
+## 🚀 Try the Live Application
 
-**InsightTrace AI** is a web-based Business Intelligence (BI) platform that helps users explore business datasets without having to manually inspect every row. Upload a CSV file, preview its contents, review statistical analysis, and generate evidence-based findings with AI-assisted explanations.
+<div align="center">
 
-The application uses a React frontend, a FastAPI backend, Neon PostgreSQL for dataset metadata, and private Neon Object Storage for uploaded CSV files. The storage integration keeps uploaded files separate from the Render application filesystem, so datasets remain available after backend restarts and redeployments.
+### [Launch InsightTrace AI →](https://ai-business-intelligence-platform-opal.vercel.app/)
 
-## Live Application
+**Upload a CSV · Explore analytics · Generate insights · Understand the evidence**
+
+</div>
+
+InsightTrace AI is deployed as a full-stack web application. The React frontend is hosted on **Vercel**, the FastAPI backend on **Render**, and uploaded datasets are stored using **Neon PostgreSQL** and **Neon Object Storage**.
 
 | Resource | Link |
 |---|---|
-| **Web application** | [Open InsightTrace AI](https://ai-business-intelligence-platform-opal.vercel.app/) |
-| **Backend API** | [Open API](https://ai-business-intelligence-platform-zkre.onrender.com/) |
-| **Interactive API docs** | [Swagger UI](https://ai-business-intelligence-platform-zkre.onrender.com/docs) |
-| **Source code** | [GitHub repository](https://github.com/KavyaRaghuvanshi/AI-Business-Intelligence-Platform) |
+| 🌐 Live application | [Open InsightTrace AI](https://ai-business-intelligence-platform-opal.vercel.app/) |
+| ⚙️ Backend API | [Open API](https://ai-business-intelligence-platform-zkre.onrender.com/) |
+| 📚 Interactive API docs | [Open Swagger UI](https://ai-business-intelligence-platform-zkre.onrender.com/docs) |
+| 💻 Source code | [View GitHub repository](https://github.com/KavyaRaghuvanshi/AI-Business-Intelligence-Platform) |
 
-> **Deployment note:** The application uses free-tier hosting services. A free backend may take a short time to respond after an idle period, and storage/database services have usage limits. Availability and limits depend on the providers' current plans.
+> **First visit:** The backend may need a short moment to become responsive after a period of inactivity. If the first request takes time, refresh the page and try again.
 
-## Key Features
+---
 
-### Dataset workspace
-- Upload CSV datasets from the web interface.
-- Store uploaded CSV files in a private Neon Object Storage bucket.
-- Save dataset metadata and object references in Neon PostgreSQL.
-- Browse and search the dataset library.
-- Preview the first rows and inspect dataset columns.
-- Download the original CSV and a JSON analysis report.
+## 📸 Application Screenshots
 
-### Data analysis
-- View row and column counts.
-- Identify missing values by column.
-- Detect duplicate rows.
-- Inspect column data types.
-- Review numeric summaries, including mean, minimum, and maximum values.
+The screenshots below show the main workflow of the application. Add your actual screenshots to `docs/screenshots/` using these filenames; GitHub will render them automatically when the files are committed.
+<p align="center">
+      <strong>01 · Dashboard</strong><br />
+      <img src="docs/screenshots/dashboard.png" alt="InsightTrace AI dashboard" width="85%" /><br>
+      <sub>Workspace overview and navigation</sub>
+      </p>
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>02 · Dataset Library</strong><br />
+      <img src="docs/screenshots/dataset.png" alt="InsightTrace AI dataset library" width="100%" />
+      <sub>Upload and browse CSV datasets</sub>
+    </td>
+    <td width="50%" align="center">
+      <strong>03 · Analytics</strong><br />
+      <img src="docs/screenshots/datapreview.png" alt="InsightTrace AI analytics dashboard" width="100%" />
+      <sub>Explore statistics and data patterns</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <strong>04 · AI Insights</strong><br />
+      <img src="docs/screenshots/AI_Insights.png" alt="InsightTrace AI generated findings" width="100%" />
+      <sub>Review findings and supporting evidence</sub>
+    </td>
+    <td width="50%" align="center">
+  <strong>05 · InsightTrace AI</strong><br />
+  <img src="docs/screenshots/InsightTrace ai.png" alt="InsightTrace AI explanations and recommendations" width="100%" />
+  <br />
+  <sub>Explore explanations and recommendations for analytical findings</sub>
+  </td>
+  </tr>
+</table>
 
-### AI-powered insights
-- Generate evidence-based findings from a dataset.
-- Review findings related to missing values, numeric patterns, and potential outliers.
-- Use **InsightTrace AI** to produce explanatory context and recommendations for generated findings.
 
-### Application and API
-- React-based user interface.
-- FastAPI endpoints for dataset operations and analysis.
-- User registration and login endpoints are included in the backend.
-- Interactive API documentation through Swagger UI.
 
-## How It Works
+---
+
+## 💡 About the Project
+
+**InsightTrace AI** is a web-based Business Intelligence platform designed to make dataset exploration and analysis more accessible. Users can upload CSV files, inspect records, view statistical analysis, and generate findings from their data. The InsightTrace AI experience adds explanatory context and recommendations to help users interpret those findings.
+
+The project brings together a modern frontend, a Python API, relational database storage, cloud file storage, and an analysis pipeline in one deployed application.
+
+## ✨ Key Features
+
+| Feature | What it does |
+|---|---|
+| 📂 **CSV dataset upload** | Upload CSV datasets through the web interface. |
+| ☁️ **Cloud file storage** | Store uploaded dataset files in Neon Object Storage. |
+| 🗃️ **Dataset library** | Retrieve and browse saved dataset records. |
+| 👀 **Dataset preview** | Inspect rows and columns before exploring the data. |
+| 📊 **Statistical analysis** | Review dataset dimensions, data types, missing values, duplicates, and numeric summaries. |
+| 🧠 **AI Insights** | Generate evidence-based findings from the selected dataset. |
+| 🔎 **InsightTrace AI** | View explanatory context and recommendations for findings. |
+| 📥 **CSV export** | Download the original uploaded dataset. |
+| 🔌 **API documentation** | Explore backend endpoints through interactive Swagger UI. |
+
+## 🧭 How It Works
 
 ```mermaid
 flowchart TD
     A[User] --> B[React + Vite Frontend<br/>Vercel]
     B --> C[FastAPI Backend<br/>Render]
-    C --> D[CSV validation and processing<br/>pandas]
+    C --> D[Validate and process CSV<br/>pandas]
     C --> E[(Neon PostgreSQL<br/>Dataset metadata)]
-    C --> F[Neon Object Storage<br/>Private CSV files]
+    C --> F[(Neon Object Storage<br/>Uploaded CSV files)]
     D --> G[Analysis and evidence generation]
     G --> H[InsightTrace AI explanations]
     H --> C
     C --> B
 ```
 
-### Dataset upload and retrieval flow
+### Dataset workflow
 
-1. A user selects a CSV file in the React application.
-2. The frontend sends the file to the FastAPI upload endpoint.
-3. The backend validates the file and uploads it to the private Neon Object Storage bucket.
-4. The backend stores the dataset name and its `neon://` object reference in PostgreSQL.
-5. When the user opens preview, analysis, insights, or export, the backend retrieves the CSV from Object Storage and processes it.
+1. **Upload:** The user selects a CSV file in the web application.
+2. **Validate:** The FastAPI backend validates the uploaded data.
+3. **Store:** The CSV file is saved in Neon Object Storage, while its metadata and storage reference are recorded in Neon PostgreSQL.
+4. **Explore:** The user can preview the dataset and request statistical analysis.
+5. **Generate insights:** The analysis engine checks data quality, numeric patterns, and potential outliers to produce findings.
+6. **Interpret:** InsightTrace AI provides explanatory context and recommendations for the findings.
 
-**Why use Object Storage?** Render's local filesystem on a free web service is not persistent. Keeping the CSV files in Neon Object Storage prevents uploaded files from disappearing when the backend restarts or redeploys.
-
-## Technology Stack
+## 🏗️ Technology Stack
 
 | Layer | Technologies |
 |---|---|
@@ -108,42 +142,42 @@ flowchart TD
 | Backend | Python, FastAPI, Uvicorn |
 | Data processing | pandas |
 | Database | Neon PostgreSQL, SQLAlchemy |
-| File storage | Neon Object Storage (S3-compatible API), boto3 |
-| Authentication utilities | JWT-based token utilities, password hashing |
-| Deployment | Vercel (frontend), Render (backend), Neon (database and object storage) |
+| Object storage | Neon Object Storage, S3-compatible API, boto3 |
+| Deployment | Vercel, Render, Neon |
+| Version control | Git, GitHub |
 
-## API Reference
+## 🔌 API Reference
 
-The deployed Swagger page contains the interactive and current API schema: [Open Swagger UI](https://ai-business-intelligence-platform-zkre.onrender.com/docs).
+The deployed API includes the following core endpoints. For the complete schema and interactive testing, visit the [Swagger documentation](https://ai-business-intelligence-platform-zkre.onrender.com/docs).
 
-| Method | Endpoint | Purpose |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/` | Check that the API is running |
-| `GET` | `/dashboard` | Retrieve dashboard counts |
+| `GET` | `/` | Check API availability |
+| `GET` | `/dashboard` | Retrieve dashboard summary data |
 | `POST` | `/datasets/upload` | Upload a CSV dataset |
-| `GET` | `/datasets` | List registered datasets |
-| `GET` | `/datasets/{id}/preview` | Preview dataset rows and columns |
+| `GET` | `/datasets` | List uploaded datasets |
+| `GET` | `/datasets/{id}/preview` | Preview dataset records and columns |
 | `GET` | `/datasets/{id}/analysis` | Retrieve statistical analysis |
-| `GET` | `/datasets/{id}/insights` | Generate evidence-based insights |
+| `GET` | `/datasets/{id}/insights` | Generate evidence-based findings |
 | `GET` | `/datasets/{id}/insighttrace` | Retrieve InsightTrace AI explanations |
-| `GET` | `/datasets/{id}/export/csv` | Download the original CSV |
-| `POST` | `/datasets/demo/register` | Register available demo datasets |
-| `GET` | `/storage/health` | Check Neon Object Storage connectivity |
-| `POST` | `/users` | Register a user |
-| `POST` | `/login` | Authenticate a user |
-| `GET` | `/me` | Retrieve the authenticated user's profile |
+| `GET` | `/datasets/{id}/export/csv` | Download the original CSV dataset |
+| `GET` | `/storage/health` | Check object-storage connectivity |
 
 Replace `{id}` with the dataset ID returned by `GET /datasets`.
 
-## Run Locally
+---
+
+## 💻 Run Locally
+
+You can run the frontend and backend locally for development.
 
 ### Prerequisites
 
-- Python 3.11 recommended for the backend environment.
-- Node.js and npm.
-- A Neon project with a PostgreSQL database.
-- A private Neon Object Storage bucket and S3-compatible credentials.
-- Git.
+- Python 3.11 recommended
+- Node.js and npm
+- Git
+- A Neon PostgreSQL database
+- A Neon Object Storage bucket with its S3-compatible connection credentials
 
 ### 1. Clone the repository
 
@@ -152,36 +186,34 @@ git clone https://github.com/KavyaRaghuvanshi/AI-Business-Intelligence-Platform.
 cd AI-Business-Intelligence-Platform
 ```
 
-### 2. Configure the backend
-
-Open a terminal in the `backend` directory:
+### 2. Configure and run the backend
 
 ```bash
 cd backend
 python -m venv venv
 ```
 
-Activate the virtual environment.
+Activate the virtual environment:
 
-**Windows PowerShell:**
+**Windows PowerShell**
 
 ```powershell
 .\venv\Scripts\Activate.ps1
 ```
 
-**macOS/Linux:**
+**macOS / Linux**
 
 ```bash
 source venv/bin/activate
 ```
 
-Install the dependencies:
+Install the Python dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create `backend/.env` and add your own values:
+Create a `backend/.env` file and add your own service credentials:
 
 ```env
 DATABASE_URL=your_neon_postgresql_connection_string
@@ -196,9 +228,7 @@ CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 MAX_UPLOAD_SIZE_MB=25
 ```
 
-Use the **Storage** connection details supplied by Neon for the S3 endpoint, credentials, and region. Do not use the PostgreSQL hostname as the S3 endpoint. Keep the bucket private.
-
-> Never commit `.env` files, database connection strings, access keys, secret keys, or JWT secrets to GitHub. Use your own credentials locally and configure production secrets in the hosting provider's environment settings.
+Use the S3 connection details from the **Neon Object Storage** settings for the endpoint, access keys, and region. The S3 endpoint is different from the PostgreSQL connection hostname.
 
 Start the backend from the `backend` directory:
 
@@ -206,130 +236,115 @@ Start the backend from the `backend` directory:
 python -m uvicorn app.main:app --reload
 ```
 
-The local API should be available at `http://127.0.0.1:8000`, with Swagger UI at `http://127.0.0.1:8000/docs`.
+The backend will be available at `http://127.0.0.1:8000` and the interactive API documentation at `http://127.0.0.1:8000/docs`.
 
-### 3. Configure the frontend
+### 3. Configure and run the frontend
 
-Open a second terminal:
+Open a second terminal and run:
 
 ```bash
 cd frontend/my-app
 npm install
+npm run dev
 ```
 
-Configure the frontend API base URL using the environment-variable name or configuration already used in `src/services/api.js`. For local development, it should point to:
+Ensure the API base URL in the existing `src/services/api.js` configuration points to your local backend:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Start the Vite development server:
-
-```bash
-npm run dev
-```
-
 Vite will print the local frontend URL in the terminal (commonly `http://localhost:5173`).
 
-### 4. Verify storage connectivity
+### 4. Check object storage
 
-With the backend running and its environment variables configured, open:
+With the backend running and environment variables configured, open:
 
 ```text
 http://127.0.0.1:8000/storage/health
 ```
 
-A successful response should indicate that Neon Object Storage is connected and identify the configured bucket.
+A successful response confirms that the backend can connect to the configured object-storage bucket.
 
-## Environment Variables
+---
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | Neon PostgreSQL connection string used by the backend |
-| `AWS_ENDPOINT_URL_S3` | Neon Object Storage S3-compatible endpoint |
-| `AWS_ACCESS_KEY_ID` | Neon Object Storage access key ID |
-| `AWS_SECRET_ACCESS_KEY` | Neon Object Storage secret access key |
-| `AWS_REGION` | Region shown in Neon's Storage connection details |
-| `NEON_STORAGE_BUCKET` | Name of the private Object Storage bucket |
-| `CORS_ORIGINS` | Comma-separated frontend origins permitted by the API |
-| `MAX_UPLOAD_SIZE_MB` | Maximum CSV upload size in megabytes (defaults to 25 in the backend) |
+## ☁️ Deployment Architecture
 
-The backend may also require the authentication/secret settings defined in its security configuration. Keep those values private and configure them in the backend environment.
+| Component | Platform | Responsibility |
+|---|---|---|
+| Frontend | **Vercel** | Hosts the React application |
+| Backend | **Render** | Runs the FastAPI service |
+| Database | **Neon PostgreSQL** | Stores application and dataset metadata |
+| File storage | **Neon Object Storage** | Stores uploaded CSV files |
 
-## Deployment
+Production configuration requires the frontend to use the deployed backend URL, the backend CORS configuration to allow the frontend origin, and database/storage credentials to remain in the backend environment.
 
-The deployed project uses the following services:
+## 🔐 Security Notes
 
-- **Frontend — Vercel:** hosts the React/Vite application.
-- **Backend — Render:** hosts the FastAPI application.
-- **Database — Neon PostgreSQL:** stores application and dataset metadata.
-- **File storage — Neon Object Storage:** stores uploaded CSV files in a private bucket.
+- Never commit `.env` files, database URLs, access keys, secret keys, or tokens.
+- Keep Neon Object Storage credentials on the backend; do not expose them in frontend code.
+- Keep the object-storage bucket private unless your application specifically requires public access.
+- Do not commit virtual environments, generated build folders, or private datasets.
+- Upload only datasets you are authorized to use.
+- Review generated findings in the context of the source data and business requirements before making decisions.
 
-For a new deployment, configure the backend environment variables in Render and set the frontend's API base URL to the deployed Render backend. Configure CORS to allow the deployed Vercel origin. Never put Neon storage credentials in frontend environment variables.
-
-## Repository Structure
+## 🗂️ Project Structure
 
 ```text
 AI-Business-Intelligence-Platform/
+│
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                 # FastAPI application and API routes
+│   │   ├── main.py                 # FastAPI application and routes
 │   │   ├── storage.py              # Neon Object Storage integration
 │   │   ├── insight_engine.py       # Evidence and insight generation
-│   │   └── ai_explaner.py          # AI explanations for findings
+│   │   └── ai_explaner.py          # AI explanation logic
 │   ├── uploads/                    # Local development upload directory
-│   ├── database.py                 # SQLAlchemy database setup
-│   ├── models.py                   # Database models
-│   ├── schemas.py                  # Request/response schemas
-│   ├── security.py                 # Authentication and password utilities
+│   ├── database.py                 # Database connection setup
+│   ├── models.py                   # SQLAlchemy models
+│   ├── schemas.py                  # API schemas
+│   ├── security.py                 # Authentication utilities
 │   └── requirements.txt            # Python dependencies
+│
 ├── frontend/
-│   ├── src/
-│   │   ├── pages/              # Application pages
-│   │   └── services/            # Frontend API configuration
-│   ├── package.json
-│   └── vite.config.js
-├── data/                           # Optional demo CSV files
+│   └── src/
+│       ├── src/
+│       │   ├── pages/              # Application pages
+│       │   └── services/           # API configuration
+│       ├── package.json
+│       └── vite.config.js
+│
+├── docs/
+│   └── screenshots/                # README application screenshots
+│       ├── 01-dashboard.png
+│       ├── 02-dataset-library.png
+│       ├── 03-analytics.png
+│       ├── 04-ai-insights.png
+│       └── 05-insighttrace-ai.png
+│
 └── README.md
 ```
 
-## Security and Data Notes
+## 🛣️ Future Scope
 
-- Keep the Neon Object Storage bucket private.
-- Keep all storage credentials and database secrets on the backend.
-- Do not commit `.env`, `venv/`, uploaded private datasets, or build output to source control.
-- Configure CORS with only the frontend origins that should access the API.
-- Use datasets that you are authorized to upload and process.
-- Monitor database, object-storage, and network-transfer usage against your providers' current plan limits.
+- More interactive and customizable analytics.
+- Additional dataset formats and scalable processing.
+- Downloadable, presentation-ready insight reports.
+- Dataset ownership and access-management improvements.
+- Expanded monitoring and storage-usage visibility.
 
-## Future Improvements
-
-Potential areas for further development include:
-
-- Dataset deletion and storage cleanup from the web interface.
-- Dataset ownership and access controls.
-- More visual analytics and customizable charts.
-- Additional file formats and larger-dataset processing.
-- Exportable, presentation-ready insight reports.
-- Improved observability and storage-usage monitoring.
-
-## Contributing
-
-Suggestions and improvements are welcome. For a contribution:
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/your-feature`).
-3. Commit your changes (`git commit -m "Add your feature"`).
-4. Push the branch and open a Pull Request.
-
-## Author
+## 👩‍💻 Author
 
 **Kavya Raghuvanshi**  
-GitHub: [@KavyaRaghuvanshi](https://github.com/KavyaRaghuvanshi)
+[GitHub Profile](https://github.com/KavyaRaghuvanshi)
 
 ---
 
 <div align="center">
+
+### ⭐ Explore the project
+
+[![Open InsightTrace AI](https://img.shields.io/badge/🚀%20TRY%20THE%20LIVE%20APPLICATION-InsightTrace%20AI-2563EB?style=for-the-badge)](https://ai-business-intelligence-platform-opal.vercel.app/)
 
 **InsightTrace AI — From raw data to traceable insights.**
 
